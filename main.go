@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -21,6 +22,17 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Method:", r.Method)
 	fmt.Println("Path:", r.URL.Path)
 
+	// Limit request bodies to 1 MB.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Could not read request body", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Body:", string(body))
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Webhook received\n"))
+	w.Write(body)
 }
