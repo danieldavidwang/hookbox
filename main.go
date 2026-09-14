@@ -21,6 +21,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received request!")
 	fmt.Println("Method:", r.Method)
 	fmt.Println("Path:", r.URL.Path)
+	fmt.Println("Query:", r.URL.Query())
+	fmt.Println("Headers:", r.Header)
 
 	// Limit request bodies to 1 MB.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
