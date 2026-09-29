@@ -1,31 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"sync"
 	"time"
 )
 
-type CapturedRequest struct {
-	ID         int
-	Method     string
-	Path       string
-	Query      url.Values
-	Headers    http.Header
-	Body       []byte
-	ReceivedAt time.Time
+type RequestSummary struct {
+	ID         int       `json:"id"`
+	Method     string    `json:"method"`
+	Path       string    `json:"path"`
+	ReceivedAt time.Time `json:"received_at"`
 }
 
-var (
-	capturedRequests []CapturedRequest
-	nextID           = 1
-	mu               sync.Mutex
-)
-
 func main() {
+	http.HandleFunc("/requests", handleListRequests)
 	http.HandleFunc("/", handleRequest)
 
 	fmt.Println("Hookbox listening on http://localhost:8080")
@@ -54,7 +45,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Body:", string(body))
 
-	// CapturedRequest is HookBox's stored snapshot of an HTTP request
 	captured := CapturedRequest{
 		Method:     r.Method,
 		Path:       r.URL.Path,
@@ -64,7 +54,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		ReceivedAt: time.Now(),
 	}
 
-	// Store the request and get back the version with its assigned ID.
 	captured = storeRequest(captured)
 
 	fmt.Println("Captured request ID:", captured.ID)
@@ -73,13 +62,31 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-func storeRequest(captured CapturedRequest) CapturedRequest {
-	mu.Lock()
-	defer mu.Unlock()
+func handleListRequests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-	captured.ID = nextID
-	nextID++
+	requests := getRequests()
+	summaries := make([]RequestSummary, 0, len(requests))
 
-	capturedRequests = append(capturedRequests, captured)
-	return captured
+	for _, request := range requests {
+		summary := RequestSummary{
+			ID:         request.ID,
+			Method:     request.Method,
+			Path:       request.Path,
+			ReceivedAt: request.ReceivedAt,
+		}
+
+		summaries = append(summaries, summary)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	err := json.NewEncoder(w).Encode(summaries)
+	if err != nil {
+		fmt.Println("Error encoding requests:", err)
+	}
 }
