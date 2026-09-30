@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// RequestSummary is the lightweight representation returned by GET /requests.
+// Listing many requests should not send every stored header, query value, and body.
 type RequestSummary struct {
 	ID         int       `json:"id"`
 	Method     string    `json:"method"`
@@ -18,6 +20,8 @@ type RequestSummary struct {
 	ReceivedAt time.Time `json:"received_at"`
 }
 
+// RequestDetail is the full representation returned by GET /requests/{id}.
+// Body is exposed as a string so captured text/JSON is readable in the API response.
 type RequestDetail struct {
 	ID         int         `json:"id"`
 	Method     string      `json:"method"`
@@ -29,6 +33,8 @@ type RequestDetail struct {
 }
 
 func main() {
+	// The specific /requests routes expose Hookbox's inspection API.
+	// "/" remains the catch-all endpoint for incoming webhook traffic.
 	http.HandleFunc("/requests", handleListRequests)
 	http.HandleFunc("/requests/", handleGetRequest)
 	http.HandleFunc("/", handleRequest)
@@ -48,7 +54,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Query:", r.URL.Query())
 	fmt.Println("Headers:", r.Header)
 
-	// Limit request bodies to 1 MB.
+	// Step 1: bound the live request body before reading it into memory.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	body, err := io.ReadAll(r.Body)
@@ -59,6 +65,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Body:", string(body))
 
+	// Step 2: turn the live http.Request into Hookbox's own durable snapshot.
+	// Clone the headers so the stored request does not share the live header map.
 	captured := CapturedRequest{
 		Method:     r.Method,
 		Path:       r.URL.Path,
@@ -68,6 +76,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		ReceivedAt: time.Now(),
 	}
 
+	// Step 3: store the snapshot and receive the version with its assigned ID.
 	captured = storeRequest(captured)
 
 	fmt.Println("Captured request ID:", captured.ID)
@@ -83,6 +92,7 @@ func handleListRequests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the stored requests, then project each one into a lightweight summary.
 	requests := getRequests()
 	summaries := make([]RequestSummary, 0, len(requests))
 
@@ -112,24 +122,23 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// "/requests/7" -> "7"
+	// Step 1: extract the identifier from "/requests/7" -> "7".
 	idString := strings.TrimPrefix(r.URL.Path, "/requests/")
 
-	// Convert "7" -> 7
+	// Step 2: distinguish a malformed ID (400) from a valid-but-missing ID (404).
 	id, err := strconv.Atoi(idString)
 	if err != nil {
 		http.Error(w, "Invalid request ID", http.StatusBadRequest)
 		return
 	}
 
-	// Look up request 7
 	request, found := getRequest(id)
 	if !found {
 		http.Error(w, "Request not found", http.StatusNotFound)
 		return
 	}
 
-	// Convert our internal representation into an API response.
+	// Step 3: convert the internal stored request into the API representation.
 	detail := RequestDetail{
 		ID:         request.ID,
 		Method:     request.Method,
