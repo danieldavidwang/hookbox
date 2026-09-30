@@ -44,3 +44,16 @@ func getRequests() []CapturedRequest {
 
 	return requests
 }
+
+func getRequest(id int) (CapturedRequest, bool) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for _, request := range capturedRequests {
+		if request.ID == id {
+			return request, true
+		}
+	}
+
+	return CapturedRequest{}, false
+}
