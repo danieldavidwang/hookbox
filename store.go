@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// CapturedRequest is Hookbox's internal snapshot of an incoming HTTP request.
+// Unlike *http.Request, it contains only the data we want to keep after the handler returns.
 type CapturedRequest struct {
 	ID         int
 	Method     string
@@ -20,13 +22,18 @@ type CapturedRequest struct {
 var (
 	capturedRequests []CapturedRequest
 	nextID           = 1
-	mu               sync.Mutex
+
+	// The HTTP server may run multiple handlers concurrently, so access to
+	// capturedRequests and nextID must be synchronized.
+	mu sync.Mutex
 )
 
 func storeRequest(captured CapturedRequest) CapturedRequest {
 	mu.Lock()
 	defer mu.Unlock()
 
+	// Assign the ID while holding the lock so two concurrent requests
+	// cannot observe and claim the same nextID.
 	captured.ID = nextID
 	nextID++
 
@@ -39,6 +46,7 @@ func getRequests() []CapturedRequest {
 	mu.Lock()
 	defer mu.Unlock()
 
+	// Return a separate slice so callers do not receive the store's backing slice.
 	requests := make([]CapturedRequest, len(capturedRequests))
 	copy(requests, capturedRequests)
 
@@ -55,5 +63,6 @@ func getRequest(id int) (CapturedRequest, bool) {
 		}
 	}
 
+	// The bool lets callers distinguish "not found" from a real zero-value request.
 	return CapturedRequest{}, false
 }
