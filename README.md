@@ -16,8 +16,8 @@ The project is being built incrementally to explore practical backend concepts s
   - request body
   - receive timestamp
 - Limits request bodies to 1 MiB
-- Assigns each captured request a unique in-memory ID
-- Stores captured requests safely across concurrent handlers using a mutex
+- Assigns each captured request a SQLite-generated ID
+- Stores captured requests in a local SQLite database across restarts
 - Lists captured requests as lightweight JSON summaries
 - Retrieves the full details of a captured request by ID
 - Returns appropriate errors for malformed IDs, missing requests, and unsupported methods
@@ -92,7 +92,7 @@ Incoming HTTP request
 CapturedRequest snapshot
         |
         v
-thread-safe in-memory store
+   SQLite database
         |
         +----> GET /requests
         |
@@ -101,17 +101,16 @@ thread-safe in-memory store
 
 The HTTP handlers work with HookBox's own `CapturedRequest` representation rather than keeping the live `http.Request`. This lets the request remain available after the original handler finishes.
 
-## Current Limitation
+## Persistence
 
-Captured requests are currently stored only in memory.
+Captured requests are stored in `./hookbox.db`, relative to the working directory. HookBox creates the database and requests table on startup if needed.
 
-If the HookBox process stops, the stored requests and ID counter are lost. Persistent storage is the next major milestone.
+Restarting HookBox from the same directory preserves captured requests and continues assigning IDs after the existing requests. Starting from another directory uses a separate database.
 
 ## Roadmap
 
 Planned features include:
 
-- SQLite persistence
 - Automated HTTP and storage tests
 - CLI commands for listing and inspecting requests
 - Webhook replay
