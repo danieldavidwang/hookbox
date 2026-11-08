@@ -33,6 +33,12 @@ type RequestDetail struct {
 }
 
 func main() {
+	if err := initDatabase("./hookbox.db"); err != nil {
+		fmt.Println("database error:", err)
+		return
+	}
+	defer db.Close()
+
 	// The specific /requests routes expose Hookbox's inspection API.
 	// "/" remains the catch-all endpoint for incoming webhook traffic.
 	http.HandleFunc("/requests", handleListRequests)
@@ -77,7 +83,12 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 3: store the snapshot and receive the version with its assigned ID.
-	captured = storeRequest(captured)
+	captured, err = storeRequest(captured)
+	if err != nil {
+		fmt.Println("Error storing request:", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	fmt.Println("Captured request ID:", captured.ID)
 
@@ -93,7 +104,12 @@ func handleListRequests(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read the stored requests, then project each one into a lightweight summary.
-	requests := getRequests()
+	requests, err := getRequests()
+	if err != nil {
+		fmt.Println("Error listing requests:", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	summaries := make([]RequestSummary, 0, len(requests))
 
 	for _, request := range requests {
@@ -109,7 +125,7 @@ func handleListRequests(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	err := json.NewEncoder(w).Encode(summaries)
+	err = json.NewEncoder(w).Encode(summaries)
 	if err != nil {
 		fmt.Println("Error encoding requests:", err)
 	}
@@ -132,7 +148,12 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, found := getRequest(id)
+	request, found, err := getRequest(id)
+	if err != nil {
+		fmt.Println("Error retrieving request:", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	if !found {
 		http.Error(w, "Request not found", http.StatusNotFound)
 		return
